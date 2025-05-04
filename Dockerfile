@@ -1,6 +1,5 @@
-ARG BASE_IMAGE="python:3.13-alpine"
-# only touch the line above after reading docs/maintaining/supported-python-versions.md
-
+# Use Ubuntu-based Python image
+ARG BASE_IMAGE="python:3.13-slim"
 FROM $BASE_IMAGE AS builder
 LABEL maintainer="Jacob Tomlinson <jacob@tomlinson.email>"
 
@@ -12,22 +11,21 @@ ENV DEPS_DIR=/usr/src/app/deps
 # Copy source
 COPY . .
 
-# Install build tools and libraries to build OpsDroid and its dependencies.
-RUN apk update \
-    && apk add \
-    build-base \
+# Install build tools and libraries to build OpsDroid and dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    build-essential \
     cargo \
     gcc \
     git \
-    g++ \
     libffi-dev \
-    linux-headers \
-    musl-dev \
-    olm-dev \
-    openssh-client \
-    openssl-dev \
+    libolm-dev \
+    libssl-dev \
     python3-dev \
-    zeromq-dev \
+    libzmq3-dev \
+    ssh \
+    wget \
+    curl \
     && pip install --upgrade \
     build \
     pip \
@@ -49,25 +47,23 @@ WORKDIR /usr/src/app
 ARG EXTRAS=[all,connector_matrix_e2e]
 ENV DEPS_DIR=/usr/src/app/deps
 
-# Copy the pre-built dependencies.
+# Copy pre-built dependencies
 COPY --from=builder ${DEPS_DIR}/*.whl ${DEPS_DIR}/
 
-# Install Opsdroid using only pre-built dependencies.
-RUN apk add --no-cache \
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y \
     git \
-    olm \
-    libzmq \
-    && pip install --upgrade \
-    pip \
-    setuptools \
+    libolm3 \
+    libzmq3-dev \
+    && pip install --upgrade pip setuptools \
     && pip install --no-cache-dir --no-index -f ${DEPS_DIR} \
     $(find ${DEPS_DIR} -type f -name opsdroid-*-any.whl)${EXTRAS} \
-    && rm -rf /tmp/* /var/tmp/* ${DEPS_DIR}/* \
-    && adduser -u 1001 -D opsdroid
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* ${DEPS_DIR}/* \
+    && useradd -u 1001 -m opsdroid
 
 EXPOSE 8080
 
-# Ensure the service runs as an unprivileged user.
 USER opsdroid
 ENTRYPOINT ["opsdroid"]
 CMD ["start"]
